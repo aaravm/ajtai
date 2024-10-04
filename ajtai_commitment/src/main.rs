@@ -1,83 +1,107 @@
 extern crate rand;
-
 use rand::Rng;
-use std::vec::Vec;
 
-const DIM: usize = 32; // Lattice dimension
-const MODULUS: u128 = 97; // Prime modulus for the lattice operations
+const VECTOR_SIZE: usize = 4; // Size of the secret vector
+const FOLDING_FACTOR: usize = 2; // Kappa (κ), the folding factor
 
-// Generate a random lattice matrix with given dimensions and modulus
-fn generate_lattice_matrix() -> Vec<Vec<u128>> {
+// Define matrix and vector types
+type Matrix = Vec<Vec<i64>>;
+type Vector = Vec<i64>;
+
+// Generate random matrix A
+fn generate_random_matrix(size: usize) -> Matrix {
     let mut rng = rand::thread_rng();
-    let mut matrix: Vec<Vec<u128>> = Vec::new();
-    
-    for _ in 0..DIM {
-        let row: Vec<u128> = (0..DIM).map(|_| rng.gen_range(0..MODULUS)).collect();
-        matrix.push(row);
+    let mut matrix = vec![vec![0; size]; size];
+    for i in 0..size {
+        for j in 0..size {
+            matrix[i][j] = rng.gen_range(0..10); // Random numbers for matrix elements
+        }
     }
-    
     matrix
 }
 
-// Generate random 32-byte key-value pair
-fn generate_random_key_value() -> (Vec<u8>, Vec<u8>) {
+// Generate random secret vector s
+fn generate_random_vector(size: usize) -> Vector {
     let mut rng = rand::thread_rng();
-    let key: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
-    let value: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
-    
-    (key, value)
-}
-
-// Encode message (key or value) into a lattice vector
-fn encode_to_lattice_vector(data: Vec<u8>) -> Vec<u128> {
-    data.iter().map(|&x| x as u128).collect()
-}
-
-// Perform lattice commitment: matrix * vector + randomness
-fn lattice_commit(matrix: &Vec<Vec<u128>>, message: Vec<u128>, randomness: Vec<u128>) -> Vec<u128> {
-    let mut commitment = vec![0u128; DIM];
-    
-    for i in 0..DIM {
-        let mut sum = 0u128;
-        for j in 0..DIM {
-            sum = (sum + (matrix[i][j] * message[j])) % MODULUS;
-        }
-        commitment[i] = (sum + randomness[i]) % MODULUS;
+    let mut vector = vec![0; size];
+    for i in 0..size {
+        vector[i] = rng.gen_range(0..10); // Random numbers for vector elements
     }
-    
-    commitment
+    vector
 }
 
-// Verify the commitment by recalculating the commitment with the original message and randomness
-fn verify_commit(matrix: &Vec<Vec<u128>>, message: Vec<u128>, randomness: Vec<u128>, commitment: Vec<u128>) -> bool {
-    let recalculated_commitment = lattice_commit(matrix, message, randomness);
-    recalculated_commitment == commitment
+// Helper function for matrix-vector multiplication (A * s)
+fn matrix_vector_multiply(matrix: &Matrix, vector: &Vector) -> Vector {
+    let size = vector.len();
+    let mut result = vec![0; size];
+    for i in 0..size {
+        for j in 0..size {
+            result[i] += matrix[i][j] * vector[j];
+        }
+    }
+    result
+}
+
+// Folding step: Reduce polynomial size by factor of kappa
+fn fold_vector(vector: &Vector, kappa: usize) -> Vector {
+    let folded_size = vector.len() / kappa;
+    let mut folded_vector = vec![0; folded_size];
+    for i in 0..folded_size {
+        for j in 0..kappa {
+            folded_vector[i] += vector[i * kappa + j]; // Simple folding operation
+        }
+    }
+    folded_vector
+}
+
+// Commit to a message using matrix A and secret vector s
+fn commit(matrix: &Matrix, secret_vector: &Vector, message: &Vector, generator: &Vector) -> Vector {
+    let mut result = matrix_vector_multiply(&matrix, &secret_vector);
+    for i in 0..message.len() {
+        result[i] += message[i] * generator[i]; // A * s + m * g
+    }
+    result
+}
+
+// Opening the commitment: Reveal short opening proof
+fn open_commitment(secret_vector: &Vector, folded_vector: &Vector) -> Vector {
+    // In the opening phase, we reveal only the folded vector instead of the full secret
+    folded_vector.clone()
+}
+
+// Verify the commitment with short opening proof
+fn verify(matrix: &Matrix, short_opening_proof: &Vector, commitment: &Vector, message: &Vector, generator: &Vector) -> bool {
+    // Recompute the expected commitment with the short opening proof
+    let expected_commitment = matrix_vector_multiply(&matrix, &short_opening_proof);
+    let mut verification_result = expected_commitment.clone();
+    for i in 0..message.len() {
+        verification_result[i] += message[i] * generator[i]; // A * s + m * g
+    }
+    verification_result == *commitment
 }
 
 fn main() {
-    // Step 1: Generate random lattice matrix
-    let lattice_matrix = generate_lattice_matrix();
-    
-    // Step 2: Generate random key-value pair (32 bytes each)
-    let (key, value) = generate_random_key_value();
-    println!("Generated 32-byte Key: {:?}", key);
-    println!("Generated 32-byte Value: {:?}", value);
-    
-    // Step 3: Encode key and value into lattice vectors
-    let encoded_key = encode_to_lattice_vector(key.clone());
-    let encoded_value = encode_to_lattice_vector(value.clone());
-    
-    // Step 4: Generate random vector for commitment (for security)
-    let mut rng = rand::thread_rng();
-    let randomness: Vec<u128> = (0..DIM).map(|_| rng.gen_range(0..MODULUS)).collect();
-    
-    // Step 5: Commit to the key
-    let key_commitment = lattice_commit(&lattice_matrix, encoded_key.clone(), randomness.clone());
-    println!("Key Commitment: {:?}", key_commitment);
-    
-    // Step 6: Verify the commitment
-    let is_valid = verify_commit(&lattice_matrix, encoded_key, randomness.clone(), key_commitment.clone());
-    println!("Commitment verification: {}", is_valid);
-    
-    // Similarly, you can create a commitment for the value
+    // Setup phase: Generate matrix A and secret vector s
+    let matrix_a = generate_random_matrix(VECTOR_SIZE);
+    let secret_vector = generate_random_vector(VECTOR_SIZE);
+
+    // Generate a large random message and a generator vector
+    let message = vec![1, 2, 3, 4]; // Random message, replace with larger polynomial as needed
+    let generator = vec![1, 1, 1, 1]; // Use a simple generator for the commitment
+
+    // Commit to the message
+    let commitment = commit(&matrix_a, &secret_vector, &message, &generator);
+    println!("Commitment: {:?}", commitment);
+
+    // Folding phase: Reduce message size by folding
+    let folded_secret = fold_vector(&secret_vector, FOLDING_FACTOR);
+    println!("Folded secret: {:?}", folded_secret);
+
+    // Opening the commitment with short opening proof
+    let short_opening_proof = open_commitment(&secret_vector, &folded_secret);
+    println!("Short opening proof: {:?}", short_opening_proof);
+
+    // Verify the commitment using the short opening proof
+    let is_valid = verify(&matrix_a, &short_opening_proof, &commitment, &message, &generator);
+    println!("Is the commitment valid? {}", is_valid);
 }

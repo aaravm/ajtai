@@ -23,3 +23,5 @@ The 3 main requirements of such a scheme:
 9. Few More Documents:
     - [Document 1](https://hackmd.io/@kevaundray/HJOAXULw9)
     - [Document 2](https://hackmd.io/@kevaundray/Skgv758D5)
+10. https://newtpqc.org/public/ngoc_khahn_nguyen.pdf
+11. https://www.icms.org.uk/sites/default/files/downloads/Workshops/2024/Sep-2024/Ngoc%20Khanh%20Nguyen%20-%20Polynomial%20Commitment.pdf 
